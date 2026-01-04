@@ -1,0 +1,19 @@
+# VGI kiosk Openbox autostart template
+# Location on target: /home/kiosk/.config/openbox/autostart
+
+# Disable screen blanking / DPMS
+xset s off
+xset s noblank
+xset -dpms
+
+# Optional: hide mouse cursor quickly (install: unclutter)
+# unclutter -idle 0.25 -root &
+
+# Optional: solid background
+# xsetroot -solid "#101820" &
+
+# If using systemd user service (recommended):
+# systemctl --user start vgi-kiosk.service
+
+# Or launch directly:
+# /usr/local/bin/vgi-kiosk-launch &

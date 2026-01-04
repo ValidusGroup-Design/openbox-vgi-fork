@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+"""
+VGI kiosk launcher.
+
+- Reads default app name from: /etc/vgi-kiosk/default-app
+- Reads app descriptor from:    /etc/vgi-kiosk/apps.d/<name>.ini
+- Launches app (optionally via venv) and streams stdout/stderr to journald.
+
+No external dependencies (uses configparser from stdlib).
+"""
+
+from __future__ import annotations
+
+import configparser
+import os
+import shlex
+import subprocess
+import sys
+from pathlib import Path
+
+DEFAULT_APP_FILE = Path("/etc/vgi-kiosk/default-app")
+APPS_DIR = Path("/etc/vgi-kiosk/apps.d")
+
+def die(msg: str, code: int = 1) -> None:
+    print(f"[vgi-kiosk] ERROR: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+def read_default_app() -> str:
+    if not DEFAULT_APP_FILE.exists():
+        die(f"Missing {DEFAULT_APP_FILE}. Put an app name in this file (e.g. 'example-io-panel').")
+    name = DEFAULT_APP_FILE.read_text(encoding="utf-8").strip()
+    if not name:
+        die(f"{DEFAULT_APP_FILE} is empty.")
+    return name
+
+def load_descriptor(app_name: str) -> configparser.ConfigParser:
+    path = APPS_DIR / f"{app_name}.ini"
+    if not path.exists():
+        die(f"Missing app descriptor: {path}")
+    cfg = configparser.ConfigParser()
+    cfg.read(path, encoding="utf-8")
+    if "app" not in cfg:
+        die(f"Descriptor {path} must contain [app] section.")
+    return cfg
+
+def build_env(cfg: configparser.ConfigParser) -> dict[str, str]:
+    env = dict(os.environ)
+    if "env" in cfg:
+        for k, v in cfg["env"].items():
+            env[k] = v
+    # Helpful defaults
+    env.setdefault("VGI_KIOSK", "1")
+    return env
+
+def main() -> int:
+    app_name = read_default_app()
+    cfg = load_descriptor(app_name)
+
+    app = cfg["app"]
+    name = app.get("name", app_name).strip()
+    workdir = Path(app.get("workdir", "/")).expanduser()
+    venv = app.get("venv", "").strip()
+    cmd_str = app.get("cmd", "").strip()
+
+    if not cmd_str:
+        die(f"Descriptor for '{app_name}' must define 'cmd =' in [app].")
+
+    # If venv is set, prefer venv python for "python ..." commands.
+    # If cmd does not start with python, we just execute it as-is.
+    argv = shlex.split(cmd_str)
+
+    if venv:
+        venv_path = Path(venv).expanduser()
+        vpy = venv_path / "bin" / "python"
+        if argv and argv[0] == "python":
+            if not vpy.exists():
+                die(f"venv python not found at {vpy} (check venv path in descriptor).")
+            argv[0] = str(vpy)
+
+        # Ensure the venv bin is on PATH for other helper binaries installed in venv
+        env = build_env(cfg)
+        env["PATH"] = f"{venv_path / 'bin'}:{env.get('PATH','')}"
+    else:
+        env = build_env(cfg)
+
+    if not workdir.exists():
+        die(f"workdir does not exist: {workdir}")
+
+    print(f"[vgi-kiosk] Launching '{name}'")
+    print(f"[vgi-kiosk] workdir: {workdir}")
+    print(f"[vgi-kiosk] cmd:     {' '.join(shlex.quote(a) for a in argv)}")
+
+    # Exec child, inherit stdout/stderr so journald captures logs.
+    proc = subprocess.Popen(argv, cwd=str(workdir), env=env)
+    return proc.wait()
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except KeyboardInterrupt:
+        print("[vgi-kiosk] Interrupted", file=sys.stderr)
+        raise SystemExit(130)
