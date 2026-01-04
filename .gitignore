@@ -109,3 +109,7 @@ obt/tests/ddtest
 obt/tests/linktest
 obt/tests/watchtest
 obt/obt_unittests
+
+# VGI kiosk local notes / temp
+vgi-kiosk/.local/
+vgi-kiosk/**/*.log

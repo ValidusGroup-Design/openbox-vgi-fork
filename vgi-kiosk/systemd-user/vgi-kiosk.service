@@ -1,0 +1,13 @@
+[Unit]
+Description=VGI Kiosk Launcher
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/vgi-kiosk-launch
+Restart=always
+RestartSec=1
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target

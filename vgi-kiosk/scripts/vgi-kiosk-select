@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+APPS_DIR="/etc/vgi-kiosk/apps.d"
+DEFAULT_APP="/etc/vgi-kiosk/default-app"
+
+usage() {
+  cat <<USAGE
+Usage:
+  vgi-kiosk-select list
+  vgi-kiosk-select set <appname>
+  vgi-kiosk-select current
+USAGE
+}
+
+cmd="${1:-}"
+case "$cmd" in
+  list)
+    if [[ ! -d "$APPS_DIR" ]]; then
+      echo "No apps dir: $APPS_DIR" >&2
+      exit 1
+    fi
+    ls -1 "$APPS_DIR"/*.ini 2>/dev/null | sed 's#.*/##' | sed 's#\.ini$##' || true
+    ;;
+  set)
+    app="${2:-}"
+    [[ -n "$app" ]] || { usage; exit 2; }
+    [[ -f "$APPS_DIR/$app.ini" ]] || { echo "No such app descriptor: $APPS_DIR/$app.ini" >&2; exit 1; }
+    echo "$app" | sudo tee "$DEFAULT_APP" >/dev/null
+    echo "Default app set to: $app"
+    echo "Tip: restart kiosk session or run: systemctl --user restart vgi-kiosk.service"
+    ;;
+  current)
+    if [[ -f "$DEFAULT_APP" ]]; then
+      cat "$DEFAULT_APP"
+    else
+      echo "(none)"
+    fi
+    ;;
+  *)
+    usage
+    exit 2
+    ;;
+esac
